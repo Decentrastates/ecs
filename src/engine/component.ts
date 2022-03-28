@@ -13,7 +13,6 @@ export type ComponentType<T extends EcsType> = EcsResult<T>
 export type ComponentDefinition<T extends EcsType = EcsType<any>> = {
   _id: number
   has(entity: Entity): boolean
-  // removeFrom(entity: Entity): void
   getFrom(entity: Entity): Readonly<ComponentType<T>>
 
   getOrNull(entity: Entity): Readonly<ComponentType<T>> | null
@@ -24,15 +23,17 @@ export type ComponentDefinition<T extends EcsType = EcsType<any>> = {
   // adds this component to the list "to be reviewed next frame"
   mutable(entity: Entity): ComponentType<T>
   createOrReplace(entity: Entity, val: ComponentType<T>): ComponentType<T>
-
   deleteFrom(entity: Entity): ComponentType<T> | null
 
   updateFromBinary(entity: Entity, data: Uint8Array): ComponentType<T> | null
   toBinary(entity: Entity): Uint8Array
 
   iterator(): Iterable<[Entity, ComponentType<T>]>
+
+  // Dirty
   dirtyIterator(): Iterable<Entity>
   clearDirty(): void
+  isDirty(entity: Entity): boolean
 }
 
 export function defineComponent<T extends EcsType>(
@@ -40,16 +41,20 @@ export function defineComponent<T extends EcsType>(
   spec: T
 ): ComponentDefinition<T> {
   const data = new Map<Entity, ComponentType<T>>()
-  let dirtyIterator = new Set<Entity>()
+  const dirtyIterator = new Set<Entity>()
 
   return {
     _id: componentId,
+    isDirty: function (entity: Entity): boolean {
+      return dirtyIterator.has(entity)
+    },
     has: function (entity: Entity): boolean {
       return data.has(entity)
     },
     deleteFrom: function (entity: Entity): ComponentType<T> | null {
       const component = data.get(entity)
       data.delete(entity)
+      dirtyIterator.add(entity)
       return component || null
     },
     getOrNull: function (entity: Entity): Readonly<ComponentType<T>> | null {
@@ -123,10 +128,11 @@ export function defineComponent<T extends EcsType>(
       const buffer = createParser(dataArray)
       const newValue = spec.deserialize(buffer)
       data.set(entity, newValue)
+      dirtyIterator.add(entity)
       return newValue
     },
     clearDirty: function () {
-      dirtyIterator = new Set<Entity>()
+      dirtyIterator.clear()
     }
   }
 }
